@@ -1,22 +1,23 @@
 # ─── Builder stage ────────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+# debian tabanlı kullan — alpine/musl, pnpm-workspace.yaml'daki
+# esbuild/rollup platform override'larıyla çakışıyor
+FROM node:20 AS builder
 
 WORKDIR /app
 
-# pnpm'i etkinleştir (corepack Node 20 ile geliyor)
+# pnpm'i etkinleştir
 RUN corepack enable && corepack prepare pnpm@latest --activate
-
-# Bağımlılıkları önce kopyala → Docker layer cache'den yararlan
-COPY package.json pnpm-workspace.yaml* ./
-
-# pnpm-lock.yaml varsa kopyala (CI tekrarlanabilirliği için)
-COPY pnpm-lock.yaml* ./
 
 # Tüm kaynak kodunu kopyala
 COPY . .
 
-# Bağımlılıkları yükle (preinstall scripti pnpm'e izin verir)
-RUN pnpm install --frozen-lockfile || pnpm install
+# minimumReleaseAge Replit'e özgü bir güvenlik ayarı; Docker/CI ortamında
+# paket kurulumunu blokladığı için sıfıra çekiyoruz
+RUN sed -i 's/^minimumReleaseAge:.*/minimumReleaseAge: 0/' pnpm-workspace.yaml
+
+# Bağımlılıkları yükle
+# --no-frozen-lockfile: cross-platform build'lerde lock hash uyumsuzluklarını önler
+RUN pnpm install --no-frozen-lockfile
 
 # Sunucu (Express) build et → dist/server/index.mjs + dist/assets/
 RUN node build.mjs
