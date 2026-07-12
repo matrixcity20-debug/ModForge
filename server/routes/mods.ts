@@ -11,7 +11,7 @@ import {
   GetModStatsResponse,
 } from "../validators";
 import { generateMod } from "../lib/modGenerator";
-import { buildSourceJar } from "../lib/jarBuilder";
+import { buildSourceArchive } from "../lib/jarBuilder";
 
 const router: IRouter = Router();
 
@@ -147,7 +147,7 @@ router.get("/mods/:id/download", async (req, res): Promise<void> => {
     return;
   }
 
-  const jarBuffer = await buildSourceJar({
+  const archiveBuffer = await buildSourceArchive({
     title: row.title,
     mcVersion: row.mcVersion,
     modLoader: row.modLoader,
@@ -155,12 +155,12 @@ router.get("/mods/:id/download", async (req, res): Promise<void> => {
     resultMarkdown: row.resultMarkdown,
   });
 
-  const filename = `${row.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}-${row.mcVersion}-source.jar`;
+  const filename = `${row.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}-${row.mcVersion}-kaynak-kod.zip`;
 
-  res.setHeader("Content-Type", "application/java-archive");
+  res.setHeader("Content-Type", "application/zip");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-  res.setHeader("Content-Length", jarBuffer.length);
-  res.send(jarBuffer);
+  res.setHeader("Content-Length", archiveBuffer.length);
+  res.send(archiveBuffer);
 });
 
 router.delete("/mods/:id", async (req, res): Promise<void> => {

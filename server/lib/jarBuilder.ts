@@ -1,4 +1,17 @@
 import JSZip from "jszip";
+import fs from "node:fs";
+import path from "node:path";
+
+function getAssetsRoot(): string {
+  // Dev: `tsx watch server/index.ts` runs with cwd = project root, assets live at server/assets.
+  // Prod: Docker WORKDIR is /app and dist is copied there, so cwd is still project root;
+  // build.mjs copies server/assets → dist/assets alongside the bundled server code.
+  const base =
+    process.env.NODE_ENV === "production"
+      ? path.resolve(process.cwd(), "dist/assets")
+      : path.resolve(process.cwd(), "server/assets");
+  return path.join(base, "gradle-wrapper");
+}
 
 interface ModData {
   title: string;
@@ -178,6 +191,13 @@ function buildSettingsGradle(modId: string): string {
     }
 }
 
+plugins {
+    // Gradle'ın derleme için doğru JDK'yı otomatik indirmesini sağlar.
+    // Bu sayede hangi bilgisayarda çalıştırılırsa çalıştırılsın,
+    // Java önceden kurulu olmasa bile proje derlenebilir.
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+}
+
 rootProject.name = '${modId}'
 `;
 }
@@ -254,7 +274,132 @@ function buildPackMcmeta(): string {
   }, null, 2);
 }
 
-export async function buildSourceJar(mod: ModData): Promise<Buffer> {
+// ─── Gradle Wrapper ─────────────────────────────────────────────────────────
+// Bundled so the generated project can build itself without Gradle being
+// pre-installed on the target machine — the wrapper downloads the exact
+// Gradle version it needs on first run.
+function addGradleWrapper(zip: JSZip): void {
+  const assetsRoot = getAssetsRoot();
+
+  const gradlewPath = path.join(assetsRoot, "gradlew");
+  const gradlewBatPath = path.join(assetsRoot, "gradlew.bat");
+  const wrapperPropsPath = path.join(assetsRoot, "gradle/wrapper/gradle-wrapper.properties");
+  const wrapperJarPath = path.join(assetsRoot, "gradle/wrapper/gradle-wrapper.jar");
+
+  if (
+    !fs.existsSync(gradlewPath) ||
+    !fs.existsSync(gradlewBatPath) ||
+    !fs.existsSync(wrapperPropsPath) ||
+    !fs.existsSync(wrapperJarPath)
+  ) {
+    throw new Error(
+      `Gradle wrapper assets not found at "${assetsRoot}". Did the build step copy server/assets into the output?`,
+    );
+  }
+
+  // Unix line endings + executable bit for gradlew (harmless on Windows, required on macOS/Linux).
+  zip.file("gradlew", fs.readFileSync(gradlewPath, "utf8").replace(/\r\n/g, "\n"), {
+    unixPermissions: "755",
+  });
+  // CRLF for the Windows script, matching how it ships upstream.
+  zip.file("gradlew.bat", fs.readFileSync(gradlewBatPath, "utf8").replace(/\r\n/g, "\n").replace(/\n/g, "\r\n"));
+  zip.file("gradle/wrapper/gradle-wrapper.properties", fs.readFileSync(wrapperPropsPath, "utf8"));
+  zip.file("gradle/wrapper/gradle-wrapper.jar", fs.readFileSync(wrapperJarPath));
+}
+
+// ─── Windows tek-tık derleme betiği ─────────────────────────────────────────
+// Java kurulu olmasa bile çalışır: taşınabilir bir Temurin JDK'yı otomatik
+// indirip yalnızca bu betik için PATH'e ekler, ardından Gradle Wrapper'ı
+// çalıştırır. Böylece hangi Windows bilgisayarında açılırsa açılsın
+// (internet bağlantısı olduğu sürece) mod %100 derlenebilir.
+function buildWindowsBuildScript(modId: string): string {
+  return `@echo off
+setlocal enabledelayedexpansion
+title ${modId} - Otomatik Derleme
+cd /d "%~dp0"
+
+echo ============================================
+echo   MC Mod Forge - Otomatik Derleme Araci
+echo   Mod: ${modId}
+echo ============================================
+echo.
+echo Bu betik internet baglantisi gerektirir.
+echo Gerekliyse Java (JDK) ve Gradle otomatik olarak indirilecektir.
+echo Kurulu bir Java gerekmez - hicbir seyi elle kurmaniza gerek yoktur.
+echo.
+
+set "LOCAL_JDK_DIR=%~dp0.jdk"
+set "JAVA_FOUND="
+
+REM 1) Sistemde zaten bir Java var mi kontrol et
+where java >nul 2>nul
+if %ERRORLEVEL%==0 (
+    set "JAVA_FOUND=system"
+    goto :build
+)
+
+REM 2) Daha once bu betik tarafindan indirilmis taşınabilir bir JDK var mi
+if exist "%LOCAL_JDK_DIR%\\bin\\java.exe" (
+    set "JAVA_FOUND=local"
+    goto :setlocaljava
+)
+
+REM 3) Hicbiri yoksa: taşınabilir Eclipse Temurin JDK 21'i otomatik indir
+echo [BILGI] Sisteminizde Java bulunamadi. Tasinabilir bir JDK indiriliyor...
+echo         (Bu islem internet hizina bagli olarak birkac dakika surebilir)
+echo.
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$ErrorActionPreference='Stop';" ^
+    "$url='https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jdk/hotspot/normal/eclipse';" ^
+    "$zipPath = Join-Path $env:TEMP 'temurin-jdk21.zip';" ^
+    "Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing;" ^
+    "$extractDir = Join-Path $env:TEMP 'temurin-jdk21-extract';" ^
+    "if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force };" ^
+    "Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force;" ^
+    "$jdkFolder = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1;" ^
+    "if (Test-Path '%LOCAL_JDK_DIR%') { Remove-Item '%LOCAL_JDK_DIR%' -Recurse -Force };" ^
+    "Move-Item -Path $jdkFolder.FullName -Destination '%LOCAL_JDK_DIR%';" ^
+    "Remove-Item $zipPath -Force; Remove-Item $extractDir -Recurse -Force"
+
+if not exist "%LOCAL_JDK_DIR%\\bin\\java.exe" (
+    echo.
+    echo [HATA] Java otomatik olarak indirilemedi.
+    echo Lutfen internet baglantinizi kontrol edin ya da manuel olarak
+    echo bir JDK 17+ kurup bu betigi tekrar calistirin: https://adoptium.net
+    pause
+    exit /b 1
+)
+
+:setlocaljava
+set "JAVA_HOME=%LOCAL_JDK_DIR%"
+set "PATH=%LOCAL_JDK_DIR%\\bin;%PATH%"
+set "JAVA_FOUND=local"
+
+:build
+echo [BILGI] Java hazir (%JAVA_FOUND%). Gradle Wrapper ile derleme basliyor...
+echo         (Ilk calistirmada doğru Gradle surumu otomatik indirilir)
+echo.
+
+call "%~dp0gradlew.bat" build --console=plain
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo [HATA] Derleme basarisiz oldu. Yukaridaki hata mesajlarini inceleyin.
+    pause
+    exit /b 1
+)
+
+echo.
+echo ============================================
+echo   BASARILI: Mod derlendi!
+echo   Cikti dosyasi: build\\libs\\ klasorunde
+echo ============================================
+pause
+exit /b 0
+`;
+}
+
+export async function buildSourceArchive(mod: ModData): Promise<Buffer> {
   const zip = new JSZip();
   const modId = slugify(mod.title);
   const loaderLower = mod.modLoader.toLowerCase();
@@ -268,10 +413,17 @@ export async function buildSourceJar(mod: ModData): Promise<Buffer> {
   zip.file("settings.gradle", buildSettingsGradle(modId));
   zip.file("gradle.properties", buildGradleProperties(modId, mod.modLoader));
 
+  // Gradle Wrapper — proje, Gradle kurulu olmayan bir bilgisayarda bile
+  // kendi kendine doğru Gradle sürümünü indirip derleyebilir.
+  addGradleWrapper(zip);
+
+  // Windows'ta çift tıkla derleme: Java bile kurulu olmasa çalışır.
+  zip.file(`${modId}_DERLE.bat`, buildWindowsBuildScript(modId).replace(/\n/g, "\r\n"));
+
   // README
   zip.file(
     "README.md",
-    `# ${mod.title}\n\nGenerated by MC Mod Forge\n\n## Build\n\n\`\`\`bash\n./gradlew build\n\`\`\`\n\nOutput JAR will be in \`build/libs/\`.\n\n## Original Prompt\n\n${mod.prompt}\n\n## Generated Mod Documentation\n\n${mod.resultMarkdown}\n`,
+    `# ${mod.title}\n\nGenerated by MC Mod Forge\n\n## Derleme (Windows)\n\n\`${modId}_DERLE.bat\` dosyasına çift tıklayın. Java veya Gradle kurulu olmasa bile\nbetik gerekeni otomatik indirip projeyi derler. Çıktı \`build/libs/\` klasöründe olacaktır.\n\n## Derleme (macOS / Linux)\n\n\`\`\`bash\n./gradlew build\n\`\`\`\n\nÇıktı JAR dosyası \`build/libs/\` klasöründe olacaktır.\n\n## Original Prompt\n\n${mod.prompt}\n\n## Generated Mod Documentation\n\n${mod.resultMarkdown}\n`,
   );
 
   // Java source files
