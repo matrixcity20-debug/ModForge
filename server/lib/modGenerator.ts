@@ -136,7 +136,6 @@ async function callOpenRouter(
       },
       body: JSON.stringify({
         model,
-        response_format: { type: "json_object" },
         max_tokens: OR_MAX_TOKENS,
         temperature: 0.3,
         top_p: 0.95,
