@@ -25,18 +25,21 @@ interface ModelEntry {
 const MODEL_PRIORITY: readonly ModelEntry[] = [
   // ── OpenRouter – güvenilir ücretsiz modeller (Temmuz 2026) ───────────────
   // Önce OR: daha hızlı yanıt, daha az timeout, daha az bozuk model
-  { provider: "openrouter", model: "deepseek/deepseek-r1-0528:free" },
-  { provider: "openrouter", model: "qwen/qwen3-coder:free" },
-  { provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct:free" },
-  { provider: "openrouter", model: "openai/gpt-oss-120b:free" },
+  { provider: "openrouter", model: "tencent/hy3:free" },
+  { provider: "openrouter", model: "poolside/laguna-m.1:free" },
+  { provider: "openrouter", model: "cohere/north-mini-code:free" },
+  { provider: "openrouter", model: "poolside/laguna-xs-2.1:free" },
   { provider: "openrouter", model: "nvidia/nemotron-3-ultra-550b-a55b:free" },
-  { provider: "openrouter", model: "google/gemma-3-27b-it:free" },
-  { provider: "openrouter", model: "microsoft/phi-4-reasoning-plus:free" },
+  { provider: "openrouter", model: "google/gemma-4-31b-it:free" },
+  { provider: "openrouter", model: "google/gemma-4-26b-a4b-it:free" },
+  { provider : "openrouter" , model : "nvidia/nemotron-3-super-120b-a12b:free"},
 
   // ── NVIDIA NIM – yedek (Temmuz 2026) ─────────────────────────────────────
   // nemotron-super-49b: yavaş ama çalışıyor; 550b: JSON kesiyor (çok büyük çıktı)
-  { provider: "nvidia", model: "nvidia/llama-3.3-nemotron-super-49b-v1" },
-  { provider: "nvidia", model: "meta/llama-3.1-70b-instruct" },
+  { provider: "nvidia", model: "nvidia/nemotron-3-ultra-550b-a55b" },
+  { provider: "meta", model: "meta/llama-3.3-70b-instruct" },
+  { provider: "meta", model: "meta/llama-3.1-70b-instruct" },
+  { provider: "nvidia", model: "nvidia/nemotron-3-nano-omni" },
 ];
 
 // ─── System prompt ────────────────────────────────────────────────────────────
@@ -72,8 +75,8 @@ export interface ModGenerationResult {
 const MAX_ATTEMPTS_PER_MODEL = 1;
 const REQUEST_TIMEOUT_MS = 300_000; // 5 dakika — büyük modeller + uzun kod çıktısı için
 
-const OR_MAX_TOKENS  = 16_384; // 16k — tam Java kodu için yeterli alan
-const NIM_MAX_TOKENS = 32_768; // 32k — NVIDIA NIM modelleri için maksimum çıktı
+const OR_MAX_TOKENS  = 65_536; // 32k — tam Java kodu için yeterli alan
+const NIM_MAX_TOKENS = 65_536; // 32k — NVIDIA NIM modelleri için maksimum çıktı
 
 // ─── Ön filtre ────────────────────────────────────────────────────────────────
 // Sadece gerçekten yasak içerikleri yakalar; Minecraft terminolojisi ASLA engellenmez.
