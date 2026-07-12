@@ -21,7 +21,8 @@ if (process.env.NODE_ENV === "production") {
     // Serve Vite build output
     app.use(express.static(staticDir));
     // SPA fallback — any non-API GET returns index.html
-    app.get("*", (_req, res) => {
+    // Express 5 + path-to-regexp v8: "*" is invalid, must use "(.*)"
+    app.get("(.*)", (_req, res) => {
       res.sendFile(path.join(staticDir, "index.html"));
     });
     logger.info({ staticDir }, "Serving static frontend");
