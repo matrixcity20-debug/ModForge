@@ -4,6 +4,7 @@ import fs from "node:fs";
 import express from "express";
 import app from "./app";
 import { logger } from "./lib/logger";
+import { runMigrations } from "./migrate";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -14,15 +15,16 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
+// Run DB migrations before accepting traffic
+await runMigrations();
+
 // In production: serve the built frontend static files
 if (process.env.NODE_ENV === "production") {
   const staticDir = path.resolve(__dirname, "../public");
   if (fs.existsSync(staticDir)) {
-    // Serve Vite build output
     app.use(express.static(staticDir));
-    // SPA fallback — use app.use() (no path argument) to avoid
-    // path-to-regexp v8 wildcard syntax issues in Express 5.
-    // Must be registered AFTER express.static() and API routes.
+    // SPA fallback — must use app.use() (no path) to avoid
+    // path-to-regexp v8 wildcard issues in Express 5.
     app.use((_req, res) => {
       res.sendFile(path.join(staticDir, "index.html"));
     });
@@ -40,7 +42,7 @@ const server = app.listen(port, (err?: Error) => {
   logger.info({ port, env: process.env.NODE_ENV ?? "development" }, "Server listening");
 });
 
-// AI generation can take up to 5 minutes per model across the fallback chain.
+// AI generation can take up to several minutes across the fallback chain.
 server.timeout          = 600_000; // 10 minutes
 server.keepAliveTimeout = 620_000;
 server.headersTimeout   = 630_000;

@@ -13,8 +13,7 @@ async function buildAll() {
   const distDir = path.resolve(__dirname, "dist/server");
   await rm(distDir, { recursive: true, force: true });
 
-  await esbuild({
-    entryPoints: [path.resolve(__dirname, "server/index.ts")],
+  const shared = {
     platform: "node",
     bundle: true,
     format: "esm",
@@ -36,7 +35,6 @@ async function buildAll() {
       "utf-8-validate",
     ],
     sourcemap: "linked",
-    plugins: [esbuildPluginPino({ transports: ["pino-pretty"] })],
     banner: {
       js: `import { createRequire as __bannerCrReq } from 'node:module';
 import __bannerPath from 'node:path';
@@ -47,6 +45,13 @@ globalThis.__filename = __bannerUrl.fileURLToPath(import.meta.url);
 globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
 `,
     },
+  };
+
+  // Main server (includes migrate.ts via import)
+  await esbuild({
+    ...shared,
+    entryPoints: [path.resolve(__dirname, "server/index.ts")],
+    plugins: [esbuildPluginPino({ transports: ["pino-pretty"] })],
   });
 }
 
