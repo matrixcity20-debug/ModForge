@@ -9,7 +9,7 @@ import {
 } from '@/api/api';
 import { formatDistanceToNow } from 'date-fns';
 import { tr } from 'date-fns/locale';
-import { ArrowLeft, Trash2, Clock, Terminal, AlertCircle, FileCode2, Download, Loader2, Cpu } from 'lucide-react';
+import { ArrowLeft, Trash2, Clock, Terminal, AlertCircle, FileCode2, PackageCheck, Loader2, Cpu } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -38,7 +38,7 @@ export default function ModDetail() {
       a.href = url;
       const disposition = res.headers.get("content-disposition") ?? "";
       const nameMatch = disposition.match(/filename="([^"]+)"/);
-      a.download = nameMatch ? nameMatch[1] : `mod-${id}.jar`;
+      a.download = nameMatch ? nameMatch[1] : `mod-${id}.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -136,8 +136,8 @@ export default function ModDetail() {
                 disabled={isDownloading}
                 className="font-mono text-xs uppercase tracking-wider border-green-600 text-green-600 hover:bg-green-600 hover:text-white"
               >
-                <Download className="w-4 h-4 mr-2" />
-                {isDownloading ? "İndiriliyor..." : ".jar İndir"}
+                <PackageCheck className="w-4 h-4 mr-2" />
+                {isDownloading ? "Hazırlanıyor..." : ".jar'a Çevir"}
               </Button>
             )}
             <Button variant="destructive" size="sm" onClick={handleDelete} disabled={deleteMod.isPending} className="font-mono text-xs uppercase tracking-wider">

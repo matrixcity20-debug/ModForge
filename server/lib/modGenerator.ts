@@ -90,10 +90,10 @@ export interface ModGenerationResult {
 }
 
 const MAX_ATTEMPTS_PER_MODEL = 1;
-const REQUEST_TIMEOUT_MS = 300_000; // 5 dakika — büyük modeller + uzun kod çıktısı için
+const REQUEST_TIMEOUT_MS = 600_000; // 10 dakika — büyük modeller + çok uzun kod çıktısı için
 
-const OR_MAX_TOKENS  = 65_536; // 32k — tam Java kodu için yeterli alan
-const NIM_MAX_TOKENS = 65_536; // 32k — NVIDIA NIM modelleri için maksimum çıktı
+const OR_MAX_TOKENS  = 131_072; // 128k — tam Java kodu + büyük mod projeleri için maksimum alan
+const NIM_MAX_TOKENS = 131_072; // 128k — NVIDIA NIM modelleri için maksimum çıktı
 
 // ─── Ön filtre ────────────────────────────────────────────────────────────────
 // Sadece gerçekten yasak içerikleri yakalar; Minecraft terminolojisi ASLA engellenmez.
@@ -236,31 +236,90 @@ async function callNvidianim(
 }
 
 // ─── Ortak yanıt parser ───────────────────────────────────────────────────────
+
+/**
+ * JSON string değerleri içindeki literal control karakterlerini escape eder.
+ * Bazı modeller resultMarkdown gibi alanlarda literal newline / tab döndürür;
+ * bu JSON spec'e aykırıdır ve JSON.parse'ı patlatır.
+ */
+function escapeControlCharsInStrings(text: string): string {
+  let result = "";
+  let inString = false;
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === "\\" && i + 1 < text.length) {
+        // Zaten escape edilmiş sekans — olduğu gibi geç
+        result += ch + text[i + 1];
+        i += 2;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+        result += ch;
+      } else if (ch === "\n") {
+        result += "\\n";
+      } else if (ch === "\r") {
+        result += "\\r";
+      } else if (ch === "\t") {
+        result += "\\t";
+      } else {
+        result += ch;
+      }
+    } else {
+      if (ch === '"') inString = true;
+      result += ch;
+    }
+    i++;
+  }
+  return result;
+}
+
 // Bazı modeller JSON'u max_tokens sınırında keser — onarım deneriz.
 function tryRepairJson(text: string): string {
-  // Zaten geçerliyse dokunma
-  try { JSON.parse(text); return text; } catch { /* devam */ }
+  // Markdown kod bloğu wrapper'ını temizle
+  let s = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
 
-  let s = text.trim();
+  // JSON objesinin başlangıcını bul (bazen model öncesine metin ekler)
+  const firstBrace = s.indexOf("{");
+  if (firstBrace > 0) s = s.slice(firstBrace);
 
-  // Açık string varsa kapat
-  const quoteCount = (s.match(/(?<!\\)"/g) || []).length;
-  if (quoteCount % 2 !== 0) s += '"';
+  // 1. Doğrudan parse — zaten geçerliyse dokunma
+  try { JSON.parse(s); return s; } catch { /* devam */ }
+
+  // 2. String içi literal control karakterlerini escape et (newline, tab vb.)
+  //    Modeller resultMarkdown içinde literal satır sonu döndürür; bu JSON'u bozar.
+  const escaped = escapeControlCharsInStrings(s);
+  try { JSON.parse(escaped); return escaped; } catch { /* devam */ }
+
+  // 3. Kesilmiş JSON onarımı: eksik tırnak + eksik kapanış parantezleri ekle
+  let t = escaped;
+
+  // Açık string varsa kapat (state machine ile izle)
+  let inStr = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (c === "\\" && inStr) { i++; continue; } // escape sekansını atla
+    if (c === '"') inStr = !inStr;
+  }
+  if (inStr) t += '"'; // kapanmamış string'i kapat
 
   // Açık obje/array parantezlerini kapat
   const stack: string[] = [];
-  let inStr = false;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (c === '"' && s[i - 1] !== '\\') { inStr = !inStr; continue; }
+  inStr = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (c === "\\" && inStr) { i++; continue; }
+    if (c === '"') { inStr = !inStr; continue; }
     if (inStr) continue;
-    if (c === '{') stack.push('}');
-    else if (c === '[') stack.push(']');
-    else if (c === '}' || c === ']') stack.pop();
+    if (c === "{") stack.push("}");
+    else if (c === "[") stack.push("]");
+    else if (c === "}" || c === "]") stack.pop();
   }
-  s += stack.reverse().join('');
+  t += stack.reverse().join("");
 
-  try { JSON.parse(s); return s; } catch { /* onarım başarısız */ }
+  try { JSON.parse(t); return t; } catch { /* onarım başarısız */ }
   return text; // orijinali döndür, aşağıda hata fırlatılır
 }
 

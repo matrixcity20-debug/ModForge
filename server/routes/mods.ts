@@ -155,9 +155,9 @@ router.get("/mods/:id/download", async (req, res): Promise<void> => {
     resultMarkdown: row.resultMarkdown,
   });
 
-  const filename = `${row.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}-${row.mcVersion}-source.jar`;
+  const filename = `${row.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}-${row.mcVersion}-source.zip`;
 
-  res.setHeader("Content-Type", "application/java-archive");
+  res.setHeader("Content-Type", "application/zip");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
   res.setHeader("Content-Length", jarBuffer.length);
   res.send(jarBuffer);

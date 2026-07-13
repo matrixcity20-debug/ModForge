@@ -615,101 +615,165 @@ function addGradleWrapper(zip: JSZip): void {
 // ─── Windows tek-tık derleme betiği ─────────────────────────────────────────
 function buildWindowsBuildScript(modId: string, javaVersion: number): string {
   const adoptiumVersion = javaVersion >= 21 ? "21" : "17";
+  // CRLF line endings for Windows compatibility
   return `@echo off
 setlocal enabledelayedexpansion
-title ${modId} - Otomatik Derleme
+title ${modId} - MC Mod Forge Derleyici
 cd /d "%~dp0"
 
-echo ============================================
-echo   MC Mod Forge - Otomatik Derleme
-echo   Mod: ${modId}
-echo ============================================
 echo.
-echo Java ve Gradle gerekirse otomatik indirilir.
+echo  =================================================
+echo    MC Mod Forge - Otomatik .jar Derleyici
+echo    Mod    : ${modId}
+echo    Java   : ${javaVersion}+ gerekli
+echo    Gradle : Wrapper (otomatik indirilir)
+echo  =================================================
 echo.
+echo  Java ve Gradle yoksa otomatik olarak indirilir.
+echo  Internet baglantisi ilk derleme icin zorunludur.
+echo.
+echo  [1/4] Java kontrol ediliyor...
 
 set "LOCAL_JDK_DIR=%~dp0.jdk"
-set "JAVA_FOUND="
+set "JAVA_READY=0"
 
-REM 1) Sistemde Java var mi?
-where java >nul 2>nul
-if %ERRORLEVEL%==0 (
-    for /f "tokens=*" %%v in ('java -version 2^>^&1') do (
-        echo %%v | find "version \\"${adoptiumVersion}" >nul 2>nul
-        if not errorlevel 1 (
-            set "JAVA_FOUND=system"
-            goto :build
-        )
-        echo %%v | find "version \\"${javaVersion}" >nul 2>nul
-        if not errorlevel 1 (
-            set "JAVA_FOUND=system"
-            goto :build
-        )
-    )
+REM ── Adim 1: PowerShell ile Java versiyon tespiti (Batch'ten cok daha guvenilir) ──
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$javaCmd = (Get-Command java -ErrorAction SilentlyContinue);" ^
+  "if (-not $javaCmd) { exit 1 };" ^
+  "$verLine = (& java -version 2>&1 | Select-Object -First 1 | Out-String);" ^
+  "$m = [regex]::Match($verLine, '\"(\d+)(?:\.(\d+))?');" ^
+  "if (-not $m.Success) { exit 1 };" ^
+  "$major = [int]$m.Groups[1].Value;" ^
+  "if ($major -eq 1) { $major = [int]$m.Groups[2].Value };" ^
+  "if ($major -ge ${javaVersion}) { Write-Host \"[TAMAM] Sistem Java $major bulundu.\"; exit 0 } else { Write-Host \"[BILGI] Sistem Java $major, gerekli: ${javaVersion}+\"; exit 2 }"
+set "PS_EXIT=%ERRORLEVEL%"
+
+if "%PS_EXIT%"=="0" (
+    set "JAVA_READY=1"
+    goto :check_local_jdk_skip
 )
 
-REM 2) Daha once indirilmis tasinabilir JDK var mi?
+REM ── Adim 2: Daha once indirilmis yerel JDK var mi? ──────────────────────────
+:check_local_jdk
 if exist "%LOCAL_JDK_DIR%\\bin\\java.exe" (
-    set "JAVA_FOUND=local"
-    goto :setlocaljava
+    echo  [TAMAM] Yerel JDK bulundu: .jdk klasoru
+    set "JAVA_HOME=%LOCAL_JDK_DIR%"
+    set "PATH=%LOCAL_JDK_DIR%\\bin;%PATH%"
+    set "JAVA_READY=1"
+    goto :check_local_jdk_skip
 )
 
-REM 3) Eclipse Temurin JDK ${adoptiumVersion} indir (tasinabilir, kurulum gerekmez)
-echo [BILGI] Java ${adoptiumVersion} indiriliyor...
-echo         Bu islem internet hiziniza gore birkac dakika surebilir.
+REM ── Adim 3: Eclipse Temurin JDK ${adoptiumVersion} indir (kurulum gerekmez) ──
+echo  [BILGI] Java ${adoptiumVersion} bulunamadi. Eclipse Temurin indiriliyor...
+echo          (Bu islem internet hiziniza gore 1-5 dakika surebilir)
 echo.
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$ErrorActionPreference='Stop';" ^
-    "$url='https://api.adoptium.net/v3/binary/latest/${adoptiumVersion}/ga/windows/x64/jdk/hotspot/normal/eclipse';" ^
-    "$zipPath = Join-Path $env:TEMP 'temurin-jdk.zip';" ^
-    "Write-Host '[BILGI] Indirme basliyor...';" ^
-    "Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing;" ^
-    "Write-Host '[BILGI] Cikartiliyor...';" ^
-    "$extractDir = Join-Path $env:TEMP 'temurin-jdk-extract';" ^
-    "if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force };" ^
-    "Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force;" ^
-    "$jdkFolder = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1;" ^
-    "if (Test-Path '%LOCAL_JDK_DIR%') { Remove-Item '%LOCAL_JDK_DIR%' -Recurse -Force };" ^
-    "Move-Item -Path $jdkFolder.FullName -Destination '%LOCAL_JDK_DIR%';" ^
-    "Remove-Item $zipPath -Force; Remove-Item $extractDir -Recurse -Force;" ^
-    "Write-Host '[BILGI] Java basariyla indirildi.'"
+  "try {" ^
+  "  $ErrorActionPreference = 'Stop';" ^
+  "  $api = 'https://api.adoptium.net/v3/binary/latest/${adoptiumVersion}/ga/windows/x64/jdk/hotspot/normal/eclipse';" ^
+  "  $zip = Join-Path $env:TEMP 'modforge-temurin-${adoptiumVersion}.zip';" ^
+  "  $extract = Join-Path $env:TEMP 'modforge-temurin-extract';" ^
+  "  Write-Host '  -> Indirme basliyor: Eclipse Temurin ${adoptiumVersion}...';" ^
+  "  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;" ^
+  "  Invoke-WebRequest -Uri $api -OutFile $zip -UseBasicParsing -TimeoutSec 300;" ^
+  "  Write-Host '  -> Arsiv aciliyor...';" ^
+  "  if (Test-Path $extract) { Remove-Item $extract -Recurse -Force };" ^
+  "  Expand-Archive -Path $zip -DestinationPath $extract -Force;" ^
+  "  $jdkDir = Get-ChildItem $extract -Directory | Select-Object -First 1;" ^
+  "  $dest = '%LOCAL_JDK_DIR%'.Replace('\\\\','\\');" ^
+  "  if (Test-Path $dest) { Remove-Item $dest -Recurse -Force };" ^
+  "  Move-Item $jdkDir.FullName $dest;" ^
+  "  Remove-Item $zip -Force -ErrorAction SilentlyContinue;" ^
+  "  Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue;" ^
+  "  Write-Host '  -> Java basariyla indirildi.';" ^
+  "  exit 0" ^
+  "} catch {" ^
+  "  Write-Host \"  [HATA] Indirme basarisiz: $($_.Exception.Message)\";" ^
+  "  exit 1" ^
+  "}"
+
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo  ================================================
+    echo   [HATA] Java indirilemedi!
+    echo.
+    echo   Lutfen asagidaki adresten Java ${adoptiumVersion} kurun:
+    echo   https://adoptium.net/temurin/releases/?version=${adoptiumVersion}
+    echo.
+    echo   Kurulumdan sonra bu .bat dosyasini tekrar calistirin.
+    echo  ================================================
+    echo.
+    pause
+    exit /b 1
+)
 
 if not exist "%LOCAL_JDK_DIR%\\bin\\java.exe" (
     echo.
-    echo [HATA] Java indirilemedi.
-    echo Lutfen internet baglantinizi kontrol edin.
-    echo Manuel indirme: https://adoptium.net/temurin/releases/?version=${adoptiumVersion}
+    echo  [HATA] JDK klasoru beklenen konumda degil: %LOCAL_JDK_DIR%
+    echo  Lutfen manuel Java kurulumu yapin: https://adoptium.net
     pause
     exit /b 1
 )
 
-:setlocaljava
 set "JAVA_HOME=%LOCAL_JDK_DIR%"
 set "PATH=%LOCAL_JDK_DIR%\\bin;%PATH%"
-set "JAVA_FOUND=local"
+set "JAVA_READY=1"
 
-:build
-echo [BILGI] Java hazir (%JAVA_FOUND%). Derleme basliyor...
-echo         (Ilk calistirmada Gradle ve mod loader otomatik indirilir)
-echo.
-
-call "%~dp0gradlew.bat" build --stacktrace 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo.
-    echo [HATA] Derleme basarisiz!
-    echo.
-    echo Yukaridaki hata mesajlarini okuyun.
-    echo Yardim icin: https://discord.gg/minecraft-modding
+:check_local_jdk_skip
+if "%JAVA_READY%"=="0" (
+    echo  [HATA] Java hazirlanamadi.
     pause
     exit /b 1
 )
 
 echo.
-echo ============================================
+echo  [2/4] Gradle wrapper kontrol ediliyor...
+if not exist "%~dp0gradlew.bat" (
+    echo  [HATA] gradlew.bat bulunamadi. ZIP dosyasi bozuk olmayabilir mi?
+    pause
+    exit /b 1
+)
+
+echo  [3/4] Derleme basliyor...
+echo         (Ilk calistirmada Gradle + mod loader dosyalari indirilir ~200-500MB)
+echo         (Bu islem 5-15 dakika surebilir - lutfen bekleyin)
+echo.
+
+REM Gradle'i temiz calistir, daemon kapatik (gradle.properties'de de var)
+set "GRADLE_OPTS=-Xmx2g"
+call "%~dp0gradlew.bat" build -x test --no-daemon --stacktrace 2>&1
+set "BUILD_EXIT=%ERRORLEVEL%"
+
+if %BUILD_EXIT% NEQ 0 (
+    echo.
+    echo  ================================================
+    echo   [HATA] Derleme basarisiz! (Cikis kodu: %BUILD_EXIT%)
+    echo.
+    echo   Yukaridaki hata mesajlarini okuyun.
+    echo   Olasi sebepler:
+    echo    - Internet baglantisi kesildi (Gradle dosya indirirken)
+    echo    - Yeterli disk alani yok (en az 2GB bos alan gerekli)
+    echo    - Antivirus Gradle'i engelledi (istisna ekleyin)
+    echo.
+    echo   Tekrar denemek icin bu .bat dosyasini calistirin.
+    echo  ================================================
+    echo.
+    pause
+    exit /b 1
+)
+
+echo.
+echo  ================================================
 echo   BASARILI! Mod derlendi.
-echo   Cikti: build\\libs\\ klasorunde
-echo ============================================
+echo.
+echo   JAR dosyasi: build\libs\ klasorunde
+echo.
+echo   Minecraft mods/ klasorune kopyalayin ve oynayin!
+echo  ================================================
+
+echo.
 pause
 exit /b 0
 `;
