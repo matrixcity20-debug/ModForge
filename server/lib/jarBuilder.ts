@@ -35,6 +35,7 @@ interface FabricVersions {
   loader: string;
   api: string;
   java: number;
+  yarn: string; // net.fabricmc:yarn:{yarn}:v2
 }
 interface ForgeVersions {
   forgeGradle: string;
@@ -54,17 +55,18 @@ interface QuiltVersions {
 }
 
 const FABRIC_VERSIONS: Record<string, FabricVersions> = {
-  "1.21.4": { loom: "1.9.2", loader: "0.16.10", api: "0.115.0+1.21.4", java: 21 },
-  "1.21.3": { loom: "1.9.2", loader: "0.16.9",  api: "0.110.5+1.21.3", java: 21 },
-  "1.21.1": { loom: "1.7.4", loader: "0.16.5",  api: "0.107.0+1.21.1", java: 21 },
-  "1.21":   { loom: "1.7.4", loader: "0.15.11", api: "0.100.7+1.21",   java: 21 },
-  "1.20.6": { loom: "1.7.1", loader: "0.15.11", api: "0.99.2+1.20.6",  java: 21 },
-  "1.20.4": { loom: "1.4.5", loader: "0.15.7",  api: "0.96.11+1.20.4", java: 17 },
-  "1.20.2": { loom: "1.3.12",loader: "0.14.25", api: "0.91.6+1.20.2",  java: 17 },
-  "1.20.1": { loom: "1.3.12",loader: "0.14.25", api: "0.92.2+1.20.1",  java: 17 },
-  "1.19.4": { loom: "1.2.7", loader: "0.14.23", api: "0.87.2+1.19.4",  java: 17 },
-  "1.19.2": { loom: "1.0.18",loader: "0.14.23", api: "0.77.0+1.19.2",  java: 17 },
-  "1.18.2": { loom: "0.12.12",loader:"0.14.23", api: "0.73.2+1.18.2",  java: 17 },
+  // yarn: Fabric meta API'den alınan en güncel build numarası (meta.fabricmc.net/v2/versions/yarn/{mc})
+  "1.21.4": { loom: "1.9.2",  loader: "0.16.10", api: "0.115.0+1.21.4", java: 21, yarn: "1.21.4+build.8"  },
+  "1.21.3": { loom: "1.9.2",  loader: "0.16.9",  api: "0.110.5+1.21.3", java: 21, yarn: "1.21.3+build.2"  },
+  "1.21.1": { loom: "1.7.4",  loader: "0.16.5",  api: "0.107.0+1.21.1", java: 21, yarn: "1.21.1+build.3"  },
+  "1.21":   { loom: "1.7.4",  loader: "0.15.11", api: "0.100.7+1.21",   java: 21, yarn: "1.21+build.9"    },
+  "1.20.6": { loom: "1.7.1",  loader: "0.15.11", api: "0.99.2+1.20.6",  java: 21, yarn: "1.20.6+build.3"  },
+  "1.20.4": { loom: "1.4.5",  loader: "0.15.7",  api: "0.96.11+1.20.4", java: 17, yarn: "1.20.4+build.3"  },
+  "1.20.2": { loom: "1.3.12", loader: "0.14.25", api: "0.91.6+1.20.2",  java: 17, yarn: "1.20.2+build.4"  },
+  "1.20.1": { loom: "1.3.12", loader: "0.14.25", api: "0.92.2+1.20.1",  java: 17, yarn: "1.20.1+build.10" },
+  "1.19.4": { loom: "1.2.7",  loader: "0.14.23", api: "0.87.2+1.19.4",  java: 17, yarn: "1.19.4+build.2"  },
+  "1.19.2": { loom: "1.0.18", loader: "0.14.23", api: "0.77.0+1.19.2",  java: 17, yarn: "1.19.2+build.28" },
+  "1.18.2": { loom: "0.12.12",loader: "0.14.23", api: "0.73.2+1.18.2",  java: 17, yarn: "1.18.2+build.4"  },
 };
 
 const FORGE_VERSIONS: Record<string, ForgeVersions> = {
@@ -245,7 +247,7 @@ repositories {
 
 dependencies {
     minecraft "com.mojang:minecraft:${mcVersion}"
-    mappings loom.officialMojangMappings()
+    mappings "net.fabricmc:yarn:${v.yarn}:v2"
     modImplementation "net.fabricmc:fabric-loader:${v.loader}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${v.api}"
 }
@@ -454,7 +456,7 @@ rootProject.name = '${modId}'
 }
 
 function buildGradleProperties(modId: string): string {
-  return `org.gradle.jvmargs=-Xmx4G -XX:+UseG1GC
+  return `org.gradle.jvmargs=-Xmx2G -XX:+UseG1GC
 org.gradle.daemon=false
 org.gradle.parallel=true
 org.gradle.caching=false
@@ -663,10 +665,10 @@ set "JAVA_READY=0"
 REM ── Adim 1: Java versiyon tespiti ────────────────────────────────────────────
 REM Temp .ps1 dosyasina yaz — satir satir >> ile yaziyoruz, boylece CMD
 REM blok parseri parantezleri yanlis yorumlamiyor.
-set "PS_CHECK=%TEMP%\modforge_java_check_%RANDOM%.ps1"
+set "PS_CHECK=%TEMP%\\modforge_java_check_%RANDOM%.ps1"
 echo $javaCmd = Get-Command java -ErrorAction SilentlyContinue > "%PS_CHECK%"
 echo if (-not $javaCmd) { exit 1 } >> "%PS_CHECK%"
-echo $verLine = (& java -version 2>&1 ^| Select-Object -First 1 ^| Out-String) >> "%PS_CHECK%"
+echo $verLine = ^(^& java -version 2^>^&1 ^| Select-Object -First 1 ^| Out-String^) >> "%PS_CHECK%"
 echo $m = [regex]::Match($verLine, '"(\\d+)(?:\\.(\\d+))?') >> "%PS_CHECK%"
 echo if (-not $m.Success) { exit 1 } >> "%PS_CHECK%"
 echo $major = [int]$m.Groups[1].Value >> "%PS_CHECK%"
@@ -696,7 +698,7 @@ echo  [BILGI] Java ${adoptiumVersion} bulunamadi. Eclipse Temurin indiriliyor...
 echo          (Bu islem internet hiziniza gore 1-5 dakika surebilir)
 echo.
 
-set "PS_DL=%TEMP%\modforge_java_dl_%RANDOM%.ps1"
+set "PS_DL=%TEMP%\\modforge_java_dl_%RANDOM%.ps1"
 echo param([string]$Dest) > "%PS_DL%"
 echo try { >> "%PS_DL%"
 echo   $ErrorActionPreference = 'Stop' >> "%PS_DL%"
@@ -770,10 +772,20 @@ echo         (Ilk calistirmada Gradle + mod loader dosyalari indirilir ~200-500M
 echo         (Bu islem 5-15 dakika surebilir - lutfen bekleyin)
 echo.
 
-REM Gradle'i temiz calistir, daemon kapatik (gradle.properties'de de var)
-set "GRADLE_OPTS=-Xmx2g"
+REM Gradle'i calistir — daemon kapatik, gradle.properties JVM arglarini kullanir
 call "%~dp0gradlew.bat" build -x test --no-daemon --stacktrace 2>&1
 set "BUILD_EXIT=%ERRORLEVEL%"
+
+REM Eger net.minecraft gibi paketler bulunamadiysa Loom indirme hatasiydi — yenile
+if %BUILD_EXIT% NEQ 0 (
+    echo.
+    echo  [3b/4] Ilk derleme basarisiz. Gradle bagimliliklari yenileniyor ve tekrar deneniyor...
+    echo         ^(Bu genellikle Loom ilk kurulumda agdan tam indiremediginde olur^)
+    echo         ^(Bu islem 2-5 dakika surebilir^)
+    echo.
+    call "%~dp0gradlew.bat" --refresh-dependencies build -x test --no-daemon --stacktrace 2>&1
+    set "BUILD_EXIT=%ERRORLEVEL%"
+)
 
 if %BUILD_EXIT% NEQ 0 (
     echo.

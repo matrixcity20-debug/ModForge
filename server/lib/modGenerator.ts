@@ -136,19 +136,125 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// ─── Resmi doküman çekici ─────────────────────────────────────────────────────
+// Seçilen loader + MC versiyonu için resmi wiki/dokümantasyon sayfalarını çeker.
+// Hata olursa sessizce atlar — dokümantasyon isteğe bağlı, kod üretimi her zaman devam eder.
+
+const DOC_FETCH_TIMEOUT_MS = 10_000;
+const DOC_MAX_CHARS_PER_PAGE = 5_000;
+
+function getDocUrls(mcVersion: string, modLoader: string): { url: string; label: string }[] {
+  const loader = modLoader.toLowerCase();
+  const [maj, min] = mcVersion.split(".").map(Number);
+  const majorMinor = `${maj}.${min}`;
+
+  if (loader === "fabric") {
+    return [
+      { url: "https://wiki.fabricmc.net/tutorial:introduction",    label: "Fabric — Giriş" },
+      { url: "https://wiki.fabricmc.net/tutorial:setup",           label: "Fabric — Proje Kurulumu" },
+      { url: "https://wiki.fabricmc.net/tutorial:events",          label: "Fabric — Olaylar (Events)" },
+      { url: "https://wiki.fabricmc.net/tutorial:mixin_examples",  label: "Fabric — Mixin Örnekleri" },
+    ];
+  }
+  if (loader === "forge") {
+    return [
+      { url: `https://docs.minecraftforge.net/en/${majorMinor}.x/gettingstarted/`,  label: "Forge — Başlangıç" },
+      { url: `https://docs.minecraftforge.net/en/${majorMinor}.x/concepts/events/`, label: "Forge — Event Sistemi" },
+      { url: `https://docs.minecraftforge.net/en/${majorMinor}.x/networking/`,      label: "Forge — Networking" },
+    ];
+  }
+  if (loader === "neoforge") {
+    return [
+      { url: "https://docs.neoforged.net/docs/gettingstarted/",      label: "NeoForge — Başlangıç" },
+      { url: "https://docs.neoforged.net/docs/concepts/events/",      label: "NeoForge — Event Sistemi" },
+      { url: "https://docs.neoforged.net/docs/concepts/registries/",  label: "NeoForge — Registry" },
+    ];
+  }
+  if (loader === "quilt") {
+    return [
+      { url: "https://wiki.quiltmc.org/en/introduction/getting-started", label: "Quilt — Başlangıç" },
+      { url: "https://wiki.quiltmc.org/en/configuration/library-structure", label: "Quilt — Kütüphane Yapısı" },
+    ];
+  }
+  return [];
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+async function fetchLoaderDocs(mcVersion: string, modLoader: string): Promise<string> {
+  const urls = getDocUrls(mcVersion, modLoader);
+  if (urls.length === 0) return "";
+
+  const results = await Promise.allSettled(
+    urls.map(async ({ url, label }) => {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(DOC_FETCH_TIMEOUT_MS),
+        headers: { "User-Agent": "ModForge-DocFetcher/1.0 (mod code generator)" },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const html = await res.text();
+      const text = stripHtml(html).slice(0, DOC_MAX_CHARS_PER_PAGE);
+      if (text.length < 150) throw new Error("Sayfa içeriği çok kısa");
+      return `### ${label}\nKaynak: ${url}\n\n${text}`;
+    })
+  );
+
+  const sections: string[] = [];
+  for (const r of results) {
+    if (r.status === "fulfilled") sections.push(r.value);
+  }
+
+  return sections.join("\n\n---\n\n");
+}
+
 // ─── Kullanıcı mesajı ─────────────────────────────────────────────────────────
 // Prompt OLDUĞU GİBİ gönderilir — hiçbir terim nötralize edilmez.
-// Nötralizasyon modelin ne üretmesi gerektiğini anlamamasına neden oluyordu.
-function buildUserMessage(mcVersion: string, modLoader: string, prompt: string): string {
+// Resmi dokümantasyon dinamik olarak çekilip enjekte edilir.
+async function buildUserMessage(mcVersion: string, modLoader: string, prompt: string): Promise<string> {
+  let docsSection = "";
+  try {
+    const raw = await fetchLoaderDocs(mcVersion, modLoader);
+    if (raw) {
+      docsSection = [
+        ``,
+        `## RESMİ DOKÜMANTASYON — ${modLoader} ${mcVersion}`,
+        `Aşağıdaki bilgiler ${modLoader}'ın resmi sitesinden gerçek zamanlı alınmıştır.`,
+        `Kod yazarken bu dokümantasyona tam uy; import yollarını, sınıf adlarını ve API`,
+        `kalıplarını aşağıdan doğrula.`,
+        ``,
+        raw,
+        ``,
+        `## DOKÜMANTASYON SONU`,
+      ].join("\n");
+    }
+  } catch {
+    // Ağ hatası olursa dokümansız devam et
+  }
+
   return [
     `Minecraft Java Edition mod geliştirme görevi:`,
     `Sürüm: ${mcVersion}`,
     `Mod Loader: ${modLoader}`,
+    docsSection,
     ``,
     `Kullanıcının isteği:`,
     prompt,
     ``,
-    `Yukarıdaki kurallara göre yalnızca geçerli JSON formatında yanıt ver.`,
+    `Yukarıdaki kurallara ve sağlanan resmi dokümantasyona göre yalnızca geçerli JSON formatında yanıt ver.`,
   ].join("\n");
 }
 
@@ -182,7 +288,7 @@ async function callOpenRouter(
         },
         messages: [
           { role: "system", content: SYSTEM_INSTRUCTION },
-          { role: "user", content: buildUserMessage(mcVersion, modLoader, prompt) },
+          { role: "user", content: await buildUserMessage(mcVersion, modLoader, prompt) },
         ],
       }),
     });
@@ -231,7 +337,7 @@ async function callNvidianim(
         top_p: 0.95,
         messages: [
           { role: "system", content: SYSTEM_INSTRUCTION },
-          { role: "user", content: buildUserMessage(mcVersion, modLoader, prompt) },
+          { role: "user", content: await buildUserMessage(mcVersion, modLoader, prompt) },
         ],
       }),
     });
