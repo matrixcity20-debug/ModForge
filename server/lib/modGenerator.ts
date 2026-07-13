@@ -56,7 +56,7 @@ KURALLAR:
 KESİNLİKLE UYULMASI GEREKEN JAVA KOD KURALLARI (derleme başarısı için zorunlu):
 1. Her Java sınıfı \`\`\`java bloğu ile başlayıp \`\`\` ile bitmelidir. Her sınıf ayrı bir blok olmalıdır.
 2. Her sınıfın ilk satırı MUTLAKA \`package com.example.modid;\` olmalıdır — modid yerine ürettiğin mod başlığının slug hali gelir (küçük harf, boşluk yerine alt çizgi, max 32 karakter).
-3. Tüm import'ları tam qualified isimle yaz: \`import net.minecraft.world.entity.player.Player;\` gibi. Wildcard import (\`import net.*;\`) kullanma.
+3. Tüm import'ları tam qualified isimle yaz: \`import net.minecraft.client.MinecraftClient;\` gibi. Wildcard import (\`import net.*;\`) kullanma.
 4. Seçilen loader'a uygun API kullan:
    - Fabric: net.fabricmc.api.*, net.fabricmc.fabric.api.* paketleri; ModInitializer implements et
    - Forge: net.minecraftforge.*, @Mod annotation kullan, @Mod.EventBusSubscriber
@@ -64,12 +64,31 @@ KESİNLİKLE UYULMASI GEREKEN JAVA KOD KURALLARI (derleme başarısı için zoru
    - Quilt: org.quiltmc.*, QuiltMod implements et
 5. "// ... rest of implementation", "// TODO", "// add your logic here" gibi placeholder KOYMA — gerçek çalışır kod yaz.
 6. Her metodun tam gövdesini yaz. Kısaltma. Üç nokta (...) koyma.
-7. Sınıf adları PascalCase olmalı (örn: XRayMod, SpeedHackMod, KillAuraMod).
-8. java.util.function.FloatUnaryOperator YOKTUR — Java standart kütüphanesinde bulunmaz. Bunun yerine java.util.function.DoubleUnaryOperator (double) veya java.util.function.IntUnaryOperator (int) kullan; ya da ihtiyaç duyduğun imzayı inline functional interface olarak tanımla: @FunctionalInterface interface FloatOp { float apply(float v); }
-8. Ana/init sınıfı şu kalıplardan birini kullanmalı:
-   - Fabric/Quilt: \`public class XxxMod implements ModInitializer { @Override public void onInitialize() { ... } }\`
-   - Forge: \`@Mod("modid") public class XxxMod { public XxxMod() { ... } }\`
-   - NeoForge: \`@Mod("modid") public class XxxMod { public XxxMod(IEventBus bus) { ... } }\`
+7. Sınıf adları PascalCase olmalı VE Minecraft/Java'nın kendi sınıf isimleriyle ÇAKIŞMAMALI. Şu isimleri ASLA kullanma (bunlar Minecraft built-in sınıflarıdır): TextRenderer, Screen, Window, MinecraftClient, Entity, Player, Box, Vec3d, Text, Item, Block, World, ClientWorld, ServerWorld, Identifier. Bunlar gerekiyorsa import et ama kendi sınıfına bu ismi verme. Bunun yerine moduna özgü prefix ekle: EspTextRenderer, HackScreen, ClientWindow vb.
+8. java.util.function.FloatUnaryOperator KESINLIKLE YOKTUR ve KULLANILAMAZ — Java standart kütüphanesinde bu sınıf MEVCUT DEĞİLDİR, import edilemez, kullanılamaz. Bu kuralı ihlal etmek derleme hatasına yol açar. Bunun yerine YA java.util.function.DoubleUnaryOperator (double parametreli) YA da şu inline tanımı kullan: \`@FunctionalInterface interface FloatUnaryOperator { float apply(float v); }\` — bu inline tanımı kendi java dosyana yaz, import etme.
+9. Fabric için Minecraft API import yolları (Mojang official mappings — bunları birebir kullan):
+   - \`net.minecraft.client.MinecraftClient\` — MinecraftClient.getInstance()
+   - \`net.minecraft.client.render.VertexConsumer\` — vertex çizimi
+   - \`net.minecraft.client.render.VertexConsumerProvider\` — vertex provider
+   - \`net.minecraft.client.util.math.MatrixStack\` — matrix dönüşümleri
+   - \`net.minecraft.client.util.Window\` — pencere (Window sınıfı BURADAN import et, kendi sınıfına Window adını verme)
+   - \`net.minecraft.util.math.Box\` — AABB kutu
+   - \`net.minecraft.util.math.Vec3d\` — 3D vektör
+   - \`net.minecraft.client.gui.DrawContext\` — GUI çizimi (1.20+)
+   - \`net.minecraft.client.gui.screen.Screen\` — GUI ekranı
+   - \`net.minecraft.text.Text\` — metin
+   - \`net.minecraft.client.font.TextRenderer\` — font/text renderer (kendi sınıfına bu ismi VERME)
+   - \`net.minecraft.entity.Entity\` — tüm entity base
+   - \`net.minecraft.entity.player.PlayerEntity\` — player entity
+   - \`net.minecraft.item.ItemStack\` — item stack
+   - \`net.minecraft.util.Identifier\` — resource identifier
+   - \`net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents\` — client tick event
+   - \`net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents\` — world render event
+   - \`net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper\` — key binding
+10. Ana/init sınıfı şu kalıplardan birini kullanmalı:
+    - Fabric/Quilt: \`public class XxxMod implements ModInitializer { @Override public void onInitialize() { ... } }\`
+    - Forge: \`@Mod("modid") public class XxxMod { public XxxMod() { ... } }\`
+    - NeoForge: \`@Mod("modid") public class XxxMod { public XxxMod(IEventBus bus) { ... } }\`
 
 ÇIKTI:
 Yalnızca şu JSON formatında yanıt ver, başka hiçbir metin ekleme:
