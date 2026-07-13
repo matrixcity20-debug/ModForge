@@ -24,18 +24,18 @@ interface ModelEntry {
 
 const MODEL_PRIORITY: readonly ModelEntry[] = [
   // ── OpenRouter – güvenilir ücretsiz modeller (Temmuz 2026) ───────────────
-  // Önce OR: daha hızlı yanıt, daha az timeout, daha az bozuk model
-  { provider: "openrouter", model: "tencent/hy3:free" },
+  // En yetenekli kodlama modellerinden başlayarak en optimize/hafif olanlara doğru sıralandı.
+  { provider: "openrouter", model: "nvidia/nemotron-3-ultra-550b-a55b:free" },
   { provider: "openrouter", model: "poolside/laguna-m.1:free" },
+  { provider: "openrouter", model: "tencent/hy3:free" },
+  { provider: "openrouter", model: "google/gemma-4-31b-it:free" },
   { provider: "openrouter", model: "cohere/north-mini-code:free" },
   { provider: "openrouter", model: "poolside/laguna-xs-2.1:free" },
-  { provider: "openrouter", model: "nvidia/nemotron-3-ultra-550b-a55b:free" },
-  { provider: "openrouter", model: "google/gemma-4-31b-it:free" },
   { provider: "openrouter", model: "google/gemma-4-26b-a4b-it:free" },
-  { provider : "openrouter" , model : "nvidia/nemotron-3-super-120b-a12b:free"},
+  { provider: "openrouter", model: "nvidia/nemotron-3-super-120b-a12b:free" },
 
   // ── NVIDIA NIM – yedek (Temmuz 2026) ─────────────────────────────────────
-  // nemotron-super-49b: yavaş ama çalışıyor; 550b: JSON kesiyor (çok büyük çıktı)
+  // En yüksek performanstan en düşüğe (nano/omni en sonda).
   { provider: "nvidia", model: "nvidia/nemotron-3-ultra-550b-a55b" },
   { provider: "meta", model: "meta/llama-3.3-70b-instruct" },
   { provider: "meta", model: "meta/llama-3.1-70b-instruct" },
