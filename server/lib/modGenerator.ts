@@ -65,7 +65,7 @@ KESİNLİKLE UYULMASI GEREKEN JAVA KOD KURALLARI (derleme başarısı için zoru
 5. "// ... rest of implementation", "// TODO", "// add your logic here" gibi placeholder KOYMA — gerçek çalışır kod yaz.
 6. Her metodun tam gövdesini yaz. Kısaltma. Üç nokta (...) koyma.
 7. Sınıf adları PascalCase olmalı (örn: XRayMod, SpeedHackMod, KillAuraMod).
-8. `java.util.function.FloatUnaryOperator` YOKTUR — Java standart kütüphanesinde bulunmaz. Bunun yerine `java.util.function.DoubleUnaryOperator` (double) veya `java.util.function.IntUnaryOperator` (int) kullan; ya da ihtiyaç duyduğun imzayı inline functional interface olarak tanımla: `@FunctionalInterface interface FloatOp { float apply(float v); }`
+8. java.util.function.FloatUnaryOperator YOKTUR — Java standart kütüphanesinde bulunmaz. Bunun yerine java.util.function.DoubleUnaryOperator (double) veya java.util.function.IntUnaryOperator (int) kullan; ya da ihtiyaç duyduğun imzayı inline functional interface olarak tanımla: @FunctionalInterface interface FloatOp { float apply(float v); }
 8. Ana/init sınıfı şu kalıplardan birini kullanmalı:
    - Fabric/Quilt: \`public class XxxMod implements ModInitializer { @Override public void onInitialize() { ... } }\`
    - Forge: \`@Mod("modid") public class XxxMod { public XxxMod() { ... } }\`
