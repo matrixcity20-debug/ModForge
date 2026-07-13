@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm } from "node:fs/promises";
+import { rm, cp } from "node:fs/promises";
 
 globalThis.require = createRequire(import.meta.url);
 
@@ -53,6 +53,12 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     entryPoints: [path.resolve(__dirname, "server/index.ts")],
     plugins: [esbuildPluginPino({ transports: ["pino-pretty"] })],
   });
+
+  // Copy static server assets (gradle-wrapper etc.) into dist/assets
+  const srcAssets = path.resolve(__dirname, "server/assets");
+  const dstAssets = path.resolve(__dirname, "dist/assets");
+  await cp(srcAssets, dstAssets, { recursive: true });
+  console.log("Copied server/assets → dist/assets");
 }
 
 buildAll().catch((err) => {
