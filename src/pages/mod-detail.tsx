@@ -38,7 +38,7 @@ export default function ModDetail() {
       a.href = url;
       const disposition = res.headers.get("content-disposition") ?? "";
       const nameMatch = disposition.match(/filename="([^"]+)"/);
-      a.download = nameMatch ? nameMatch[1] : `mod-${id}-kaynak-kod.zip`;
+      a.download = nameMatch ? nameMatch[1] : `mod-${id}.jar`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -137,7 +137,7 @@ export default function ModDetail() {
                 className="font-mono text-xs uppercase tracking-wider border-green-600 text-green-600 hover:bg-green-600 hover:text-white"
               >
                 <Download className="w-4 h-4 mr-2" />
-                {isDownloading ? "İndiriliyor..." : "Kaynak Kodu İndir"}
+                {isDownloading ? "İndiriliyor..." : ".jar İndir"}
               </Button>
             )}
             <Button variant="destructive" size="sm" onClick={handleDelete} disabled={deleteMod.isPending} className="font-mono text-xs uppercase tracking-wider">

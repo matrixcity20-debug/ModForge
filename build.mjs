@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm, cp } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 
 globalThis.require = createRequire(import.meta.url);
 
@@ -53,14 +53,6 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     entryPoints: [path.resolve(__dirname, "server/index.ts")],
     plugins: [esbuildPluginPino({ transports: ["pino-pretty"] })],
   });
-
-  // Copy non-JS runtime assets (Gradle wrapper jar/scripts used by the mod
-  // source-code download feature) so they're available next to the bundle.
-  await cp(
-    path.resolve(__dirname, "server/assets"),
-    path.resolve(__dirname, "dist/assets"),
-    { recursive: true },
-  );
 }
 
 buildAll().catch((err) => {

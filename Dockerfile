@@ -1,33 +1,26 @@
 # ─── Builder stage ────────────────────────────────────────────────────────────
-# debian tabanlı kullan — alpine/musl, esbuild/rollup platform
-# override'larıyla çakışıyor
+# Debian tabanlı kullan — Alpine/musl, esbuild gibi native
+# bağımlılıklarla build sırasında uyumsuzluk çıkarabilir.
 FROM node:20 AS builder
 
 WORKDIR /app
 
-# pnpm'i etkinleştir
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Önce sadece package.json kopyala → bağımlılıklar değişmediğinde
+# Docker layer cache'den yararlanılır, npm install tekrar çalışmaz.
+COPY package.json ./
 
-# Kaynak kodu kopyala
+RUN npm install
+
+# Geri kalan tüm kaynak kodunu kopyala
 COPY . .
 
-# Monorepo workspace'i devre dışı bırak:
-#   - package.docker.json → tek, düz bir package.json (tüm deps birleşik)
-#   - pnpm-workspace.yaml → minimumReleaseAge ve packages listesi olmadan
-RUN cp package.docker.json package.json && \
-    printf 'packages: []\n' > pnpm-workspace.yaml
-
-# Bağımlılıkları yükle
-RUN pnpm install --no-frozen-lockfile
-
-# Sunucu (Express) build et → dist/server/index.mjs + dist/assets/
-RUN node build.mjs
-
-# Frontend (React/Vite) build et → dist/public/
-RUN pnpm exec vite build
+# Frontend (Vite) → dist/public/
+# Sunucu (esbuild) → dist/server/index.mjs
+RUN npm run build
 
 # ─── Production image ─────────────────────────────────────────────────────────
-# Sunucu esbuild ile tam bundle'landı; node_modules gerekmez.
+# Sunucu esbuild ile tamamen bundle'landı (express, pg, drizzle, jszip vb.
+# hepsi içine dahil edildi). node_modules üretim ortamında GEREKMİYOR.
 FROM node:20-alpine
 
 WORKDIR /app
@@ -36,7 +29,7 @@ COPY --from=builder /app/dist ./dist
 
 ENV NODE_ENV=production
 
-# Render PORT env var'ını kullanır (varsayılan 3001)
+# Render, PORT ortam değişkenini otomatik atar.
 EXPOSE 3001
 
 CMD ["node", "--enable-source-maps", "dist/server/index.mjs"]

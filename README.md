@@ -6,7 +6,7 @@ Yapay zeka ile Minecraft mod planı ve kaynak kodu üreten bir web uygulaması.
 
 - Forge, Fabric, NeoForge ve Quilt destekli mod üretimi
 - Arka planda AI ile tam Java kod üretimi (OpenRouter + NVIDIA NIM)
-- Üretilen modun tam kaynak kodunu, doğru Gradle proje klasör yapısıyla `.zip` olarak indirme (Gradle Wrapper + Windows için tek tık `.bat` derleme betiği dahil, Java/Gradle kurulu olmasa bile derlenebilir)
+- Üretilen modu `.jar` olarak indirme
 - PostgreSQL ile mod geçmişi ve istatistikler
 
 ---
@@ -161,9 +161,7 @@ mc-mod-forge/
 │   ├── lib/
 │   │   ├── logger.ts    # Pino logger
 │   │   ├── modGenerator.ts  # AI mod üretim motoru
-│   │   └── jarBuilder.ts    # Kaynak kodu .zip arşivi oluşturucu (Gradle Wrapper + .bat dahil)
-│   ├── assets/
-│   │   └── gradle-wrapper/  # İndirilen her mod arşivine gömülen Gradle Wrapper dosyaları
+│   │   └── jarBuilder.ts    # .jar kaynak dosyası oluşturucu
 │   └── routes/
 │       ├── index.ts
 │       ├── health.ts
@@ -177,7 +175,6 @@ mc-mod-forge/
 ├── public/              # Statik dosyalar
 ├── dist/                # Build çıktısı (git'e ekleme)
 │   ├── public/          # Frontend build
-│   ├── assets/          # server/assets kopyası (build.mjs tarafından kopyalanır)
 │   └── server/          # Server bundle
 ├── vite.config.ts
 ├── build.mjs            # esbuild server bundler
