@@ -757,7 +757,7 @@ echo "BASARILI! Mod: build/libs/ klasorunde"
 
 // ─── Ana fonksiyon ───────────────────────────────────────────────────────────
 
-export async function buildSourceArchive(mod: ModData): Promise<Buffer> {
+export async function buildSourceJar(mod: ModData): Promise<Buffer> {
   const zip = new JSZip();
   const modId = slugify(mod.title);
   const loaderLower = mod.modLoader.toLowerCase();
