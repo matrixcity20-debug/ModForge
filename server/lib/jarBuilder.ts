@@ -169,6 +169,28 @@ function isMainClass(code: string, loader: string): boolean {
   return false;
 }
 
+// Aynı paketteki sınıflara ait hayali import'ları kaldır.
+// AI bazen tüm sınıfları tek pakete koyarken onları farklı alt-paketlerden
+// import ediyor (ör: import com.stealthesp.gui.component.Window;). Gerçekte
+// hepsi com.example.modid paketinde olduğundan bu import'lar derlemeyi kırar.
+function fixSamePackageImports(files: JavaFile[]): JavaFile[] {
+  const classNames = new Set(files.map((f) => f.className));
+
+  return files.map((f) => {
+    const fixed = f.content.replace(
+      /^import\s+([\w.]+)\s*;[ \t]*/gm,
+      (line, importPath: string) => {
+        const simpleName = importPath.split(".").pop()!;
+        // Aynı paketteki sınıfsa import satırını sil
+        if (classNames.has(simpleName)) return "";
+        return line;
+      },
+    );
+    // Boş satır birikimini temizle (art arda 3+ boş satır → 1)
+    return { ...f, content: fixed.replace(/\n{3,}/g, "\n\n") };
+  });
+}
+
 function extractJavaFiles(markdown: string, modId: string, modLoader: string): JavaFile[] {
   const files: JavaFile[] = [];
   const correctPackage = `com.example.${modId}`;
@@ -189,7 +211,8 @@ function extractJavaFiles(markdown: string, modId: string, modLoader: string): J
     });
   }
 
-  return files;
+  // Aynı paketteki sınıflara ait yanlış import'ları temizle
+  return fixSamePackageImports(files);
 }
 
 // Ana sınıfı bul (yoksa ilk sınıfı kullan)
@@ -637,17 +660,22 @@ echo  [1/4] Java kontrol ediliyor...
 set "LOCAL_JDK_DIR=%~dp0.jdk"
 set "JAVA_READY=0"
 
-REM ── Adim 1: PowerShell ile Java versiyon tespiti (Batch'ten cok daha guvenilir) ──
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$javaCmd = (Get-Command java -ErrorAction SilentlyContinue);" ^
-  "if (-not $javaCmd) { exit 1 };" ^
-  "$verLine = (& java -version 2>&1 | Select-Object -First 1 | Out-String);" ^
-  "$m = [regex]::Match($verLine, '\"(\d+)(?:\.(\d+))?');" ^
-  "if (-not $m.Success) { exit 1 };" ^
-  "$major = [int]$m.Groups[1].Value;" ^
-  "if ($major -eq 1) { $major = [int]$m.Groups[2].Value };" ^
-  "if ($major -ge ${javaVersion}) { Write-Host \"[TAMAM] Sistem Java $major bulundu.\"; exit 0 } else { Write-Host \"[BILGI] Sistem Java $major, gerekli: ${javaVersion}+\"; exit 2 }"
+REM ── Adim 1: Java versiyon tespiti ────────────────────────────────────────────
+REM Temp .ps1 dosyasina yaz — boylece ^ satirlari ve ters-slash kaybi olmaz
+set "PS_CHECK=%TEMP%\modforge_java_check_%RANDOM%.ps1"
+(
+  echo $javaCmd = Get-Command java -ErrorAction SilentlyContinue
+  echo if ^(-not $javaCmd^) { exit 1 }
+  echo $verLine = ^(^& java -version 2^>^&1 ^| Select-Object -First 1 ^| Out-String^)
+  echo $m = [regex]::Match^($verLine, '"(\d+)(?:\.(\d+))?'^)
+  echo if ^(-not $m.Success^) { exit 1 }
+  echo $major = [int]$m.Groups[1].Value
+  echo if ^($major -eq 1^) { $major = [int]$m.Groups[2].Value }
+  echo if ^($major -ge ${javaVersion}^) { Write-Host "[TAMAM] Sistem Java $major bulundu."; exit 0 } else { Write-Host "[BILGI] Sistem Java $major, gerekli: ${javaVersion}+"; exit 2 }
+) > "%PS_CHECK%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_CHECK%"
 set "PS_EXIT=%ERRORLEVEL%"
+del "%PS_CHECK%" 2>nul
 
 if "%PS_EXIT%"=="0" (
     set "JAVA_READY=1"
@@ -669,30 +697,34 @@ echo  [BILGI] Java ${adoptiumVersion} bulunamadi. Eclipse Temurin indiriliyor...
 echo          (Bu islem internet hiziniza gore 1-5 dakika surebilir)
 echo.
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "try {" ^
-  "  $ErrorActionPreference = 'Stop';" ^
-  "  $api = 'https://api.adoptium.net/v3/binary/latest/${adoptiumVersion}/ga/windows/x64/jdk/hotspot/normal/eclipse';" ^
-  "  $zip = Join-Path $env:TEMP 'modforge-temurin-${adoptiumVersion}.zip';" ^
-  "  $extract = Join-Path $env:TEMP 'modforge-temurin-extract';" ^
-  "  Write-Host '  -> Indirme basliyor: Eclipse Temurin ${adoptiumVersion}...';" ^
-  "  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;" ^
-  "  Invoke-WebRequest -Uri $api -OutFile $zip -UseBasicParsing -TimeoutSec 300;" ^
-  "  Write-Host '  -> Arsiv aciliyor...';" ^
-  "  if (Test-Path $extract) { Remove-Item $extract -Recurse -Force };" ^
-  "  Expand-Archive -Path $zip -DestinationPath $extract -Force;" ^
-  "  $jdkDir = Get-ChildItem $extract -Directory | Select-Object -First 1;" ^
-  "  $dest = '%LOCAL_JDK_DIR%'.Replace('\\\\','\\');" ^
-  "  if (Test-Path $dest) { Remove-Item $dest -Recurse -Force };" ^
-  "  Move-Item $jdkDir.FullName $dest;" ^
-  "  Remove-Item $zip -Force -ErrorAction SilentlyContinue;" ^
-  "  Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue;" ^
-  "  Write-Host '  -> Java basariyla indirildi.';" ^
-  "  exit 0" ^
-  "} catch {" ^
-  "  Write-Host \"  [HATA] Indirme basarisiz: $($_.Exception.Message)\";" ^
-  "  exit 1" ^
-  "}"
+set "PS_DL=%TEMP%\modforge_java_dl_%RANDOM%.ps1"
+(
+  echo try {
+  echo   $ErrorActionPreference = 'Stop'
+  echo   $api = 'https://api.adoptium.net/v3/binary/latest/${adoptiumVersion}/ga/windows/x64/jdk/hotspot/normal/eclipse'
+  echo   $zip = Join-Path $env:TEMP 'modforge-temurin-${adoptiumVersion}.zip'
+  echo   $extract = Join-Path $env:TEMP 'modforge-temurin-extract'
+  echo   Write-Host '  -^> Indirme basliyor: Eclipse Temurin ${adoptiumVersion}...'
+  echo   [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+  echo   Invoke-WebRequest -Uri $api -OutFile $zip -UseBasicParsing -TimeoutSec 300
+  echo   Write-Host '  -^> Arsiv aciliyor...'
+  echo   if ^(Test-Path $extract^) { Remove-Item $extract -Recurse -Force }
+  echo   Expand-Archive -Path $zip -DestinationPath $extract -Force
+  echo   $jdkDir = Get-ChildItem $extract -Directory ^| Select-Object -First 1
+  echo   $dest = '%LOCAL_JDK_DIR%'
+  echo   if ^(Test-Path $dest^) { Remove-Item $dest -Recurse -Force }
+  echo   Move-Item $jdkDir.FullName $dest
+  echo   Remove-Item $zip -Force -ErrorAction SilentlyContinue
+  echo   Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
+  echo   Write-Host '  -^> Java basariyla indirildi.'
+  echo   exit 0
+  echo } catch {
+  echo   Write-Host "  [HATA] Indirme basarisiz: $($_.Exception.Message)"
+  echo   exit 1
+  echo }
+) > "%PS_DL%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_DL%"
+del "%PS_DL%" 2>nul
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
