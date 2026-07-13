@@ -661,18 +661,17 @@ set "LOCAL_JDK_DIR=%~dp0.jdk"
 set "JAVA_READY=0"
 
 REM ── Adim 1: Java versiyon tespiti ────────────────────────────────────────────
-REM Temp .ps1 dosyasina yaz — boylece ^ satirlari ve ters-slash kaybi olmaz
+REM Temp .ps1 dosyasina yaz — satir satir >> ile yaziyoruz, boylece CMD
+REM blok parseri parantezleri yanlis yorumlamiyor.
 set "PS_CHECK=%TEMP%\modforge_java_check_%RANDOM%.ps1"
-(
-  echo $javaCmd = Get-Command java -ErrorAction SilentlyContinue
-  echo if ^(-not $javaCmd^) { exit 1 }
-  echo $verLine = ^(^& java -version 2^>^&1 ^| Select-Object -First 1 ^| Out-String^)
-  echo $m = [regex]::Match^($verLine, '"(\d+)(?:\.(\d+))?'^)
-  echo if ^(-not $m.Success^) { exit 1 }
-  echo $major = [int]$m.Groups[1].Value
-  echo if ^($major -eq 1^) { $major = [int]$m.Groups[2].Value }
-  echo if ^($major -ge ${javaVersion}^) { Write-Host "[TAMAM] Sistem Java $major bulundu."; exit 0 } else { Write-Host "[BILGI] Sistem Java $major, gerekli: ${javaVersion}+"; exit 2 }
-) > "%PS_CHECK%"
+echo $javaCmd = Get-Command java -ErrorAction SilentlyContinue > "%PS_CHECK%"
+echo if (-not $javaCmd) { exit 1 } >> "%PS_CHECK%"
+echo $verLine = (& java -version 2>&1 ^| Select-Object -First 1 ^| Out-String) >> "%PS_CHECK%"
+echo $m = [regex]::Match($verLine, '"(\d+)(?:\.(\d+))?') >> "%PS_CHECK%"
+echo if (-not $m.Success) { exit 1 } >> "%PS_CHECK%"
+echo $major = [int]$m.Groups[1].Value >> "%PS_CHECK%"
+echo if ($major -eq 1) { $major = [int]$m.Groups[2].Value } >> "%PS_CHECK%"
+echo if ($major -ge ${javaVersion}) { Write-Host "[TAMAM] Sistem Java $major bulundu."; exit 0 } else { Write-Host "[BILGI] Sistem Java $major, gerekli: ${javaVersion}+"; exit 2 } >> "%PS_CHECK%"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_CHECK%"
 set "PS_EXIT=%ERRORLEVEL%"
 del "%PS_CHECK%" 2>nul
@@ -698,32 +697,30 @@ echo          (Bu islem internet hiziniza gore 1-5 dakika surebilir)
 echo.
 
 set "PS_DL=%TEMP%\modforge_java_dl_%RANDOM%.ps1"
-(
-  echo try {
-  echo   $ErrorActionPreference = 'Stop'
-  echo   $api = 'https://api.adoptium.net/v3/binary/latest/${adoptiumVersion}/ga/windows/x64/jdk/hotspot/normal/eclipse'
-  echo   $zip = Join-Path $env:TEMP 'modforge-temurin-${adoptiumVersion}.zip'
-  echo   $extract = Join-Path $env:TEMP 'modforge-temurin-extract'
-  echo   Write-Host '  -^> Indirme basliyor: Eclipse Temurin ${adoptiumVersion}...'
-  echo   [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-  echo   Invoke-WebRequest -Uri $api -OutFile $zip -UseBasicParsing -TimeoutSec 300
-  echo   Write-Host '  -^> Arsiv aciliyor...'
-  echo   if ^(Test-Path $extract^) { Remove-Item $extract -Recurse -Force }
-  echo   Expand-Archive -Path $zip -DestinationPath $extract -Force
-  echo   $jdkDir = Get-ChildItem $extract -Directory ^| Select-Object -First 1
-  echo   $dest = '%LOCAL_JDK_DIR%'
-  echo   if ^(Test-Path $dest^) { Remove-Item $dest -Recurse -Force }
-  echo   Move-Item $jdkDir.FullName $dest
-  echo   Remove-Item $zip -Force -ErrorAction SilentlyContinue
-  echo   Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
-  echo   Write-Host '  -^> Java basariyla indirildi.'
-  echo   exit 0
-  echo } catch {
-  echo   Write-Host "  [HATA] Indirme basarisiz: $($_.Exception.Message)"
-  echo   exit 1
-  echo }
-) > "%PS_DL%"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_DL%"
+echo param([string]$Dest) > "%PS_DL%"
+echo try { >> "%PS_DL%"
+echo   $ErrorActionPreference = 'Stop' >> "%PS_DL%"
+echo   $api = 'https://api.adoptium.net/v3/binary/latest/${adoptiumVersion}/ga/windows/x64/jdk/hotspot/normal/eclipse' >> "%PS_DL%"
+echo   $zip = Join-Path $env:TEMP 'modforge-temurin-${adoptiumVersion}.zip' >> "%PS_DL%"
+echo   $extract = Join-Path $env:TEMP 'modforge-temurin-extract' >> "%PS_DL%"
+echo   Write-Host '  -> Indirme basliyor: Eclipse Temurin ${adoptiumVersion}...' >> "%PS_DL%"
+echo   [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 >> "%PS_DL%"
+echo   Invoke-WebRequest -Uri $api -OutFile $zip -UseBasicParsing -TimeoutSec 300 >> "%PS_DL%"
+echo   Write-Host '  -> Arsiv aciliyor...' >> "%PS_DL%"
+echo   if (Test-Path $extract) { Remove-Item $extract -Recurse -Force } >> "%PS_DL%"
+echo   Expand-Archive -Path $zip -DestinationPath $extract -Force >> "%PS_DL%"
+echo   $jdkDir = Get-ChildItem $extract -Directory ^| Select-Object -First 1 >> "%PS_DL%"
+echo   if (Test-Path $Dest) { Remove-Item $Dest -Recurse -Force } >> "%PS_DL%"
+echo   Move-Item $jdkDir.FullName $Dest >> "%PS_DL%"
+echo   Remove-Item $zip -Force -ErrorAction SilentlyContinue >> "%PS_DL%"
+echo   Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue >> "%PS_DL%"
+echo   Write-Host '  -> Java basariyla indirildi.' >> "%PS_DL%"
+echo   exit 0 >> "%PS_DL%"
+echo } catch { >> "%PS_DL%"
+echo   Write-Host "  [HATA] Indirme basarisiz: $($_.Exception.Message)" >> "%PS_DL%"
+echo   exit 1 >> "%PS_DL%"
+echo } >> "%PS_DL%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_DL%" -Dest "%LOCAL_JDK_DIR%"
 del "%PS_DL%" 2>nul
 
 if %ERRORLEVEL% NEQ 0 (
