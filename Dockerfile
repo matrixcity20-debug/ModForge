@@ -1,6 +1,6 @@
 # ─── Builder stage ────────────────────────────────────────────────────────────
-# debian tabanlı kullan — alpine/musl, pnpm-workspace.yaml'daki
-# esbuild/rollup platform override'larıyla çakışıyor
+# debian tabanlı kullan — alpine/musl, esbuild/rollup platform
+# override'larıyla çakışıyor
 FROM node:20 AS builder
 
 WORKDIR /app
@@ -8,15 +8,16 @@ WORKDIR /app
 # pnpm'i etkinleştir
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Tüm kaynak kodunu kopyala
+# Kaynak kodu kopyala
 COPY . .
 
-# minimumReleaseAge Replit'e özgü bir güvenlik ayarı; Docker/CI ortamında
-# paket kurulumunu blokladığı için sıfıra çekiyoruz
-RUN sed -i 's/^minimumReleaseAge:.*/minimumReleaseAge: 0/' pnpm-workspace.yaml
+# Monorepo workspace'i devre dışı bırak:
+#   - package.docker.json → tek, düz bir package.json (tüm deps birleşik)
+#   - pnpm-workspace.yaml → minimumReleaseAge ve packages listesi olmadan
+RUN cp package.docker.json package.json && \
+    printf 'packages: []\n' > pnpm-workspace.yaml
 
 # Bağımlılıkları yükle
-# --no-frozen-lockfile: cross-platform build'lerde lock hash uyumsuzluklarını önler
 RUN pnpm install --no-frozen-lockfile
 
 # Sunucu (Express) build et → dist/server/index.mjs + dist/assets/
@@ -26,12 +27,11 @@ RUN node build.mjs
 RUN pnpm exec vite build
 
 # ─── Production image ─────────────────────────────────────────────────────────
-# Sunucu esbuild ile tam olarak bundle'landı; node_modules gerekmez.
+# Sunucu esbuild ile tam bundle'landı; node_modules gerekmez.
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Sadece build çıktısını kopyala
 COPY --from=builder /app/dist ./dist
 
 ENV NODE_ENV=production
