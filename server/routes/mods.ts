@@ -12,6 +12,7 @@ import {
 } from "../validators";
 import { generateMod } from "../lib/modGenerator";
 import { buildSourceJar } from "../lib/jarBuilder";
+import { buildMod, consumeJar } from "../lib/cloudBuilder";
 
 const router: IRouter = Router();
 
@@ -161,6 +162,81 @@ router.get("/mods/:id/download", async (req, res): Promise<void> => {
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
   res.setHeader("Content-Length", jarBuffer.length);
   res.send(jarBuffer);
+});
+
+// ─── Sunucu tarafı derleme (SSE) ──────────────────────────────────────────────
+router.get("/mods/:id/compile", async (req, res): Promise<void> => {
+  const params = GetModRequestParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const [row] = await db
+    .select()
+    .from(modRequestsTable)
+    .where(eq(modRequestsTable.id, params.data.id));
+
+  if (!row) {
+    res.status(404).json({ error: "Mod request not found" });
+    return;
+  }
+
+  if (row.status !== "completed" || !row.resultMarkdown) {
+    res.status(400).json({ error: "Only completed mods can be compiled" });
+    return;
+  }
+
+  // SSE başlıkları
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no"); // nginx proxy için
+  res.flushHeaders();
+
+  const send = (data: object) => {
+    try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch { /* client disconnected */ }
+  };
+
+  // Canlı tutma ping'i (proxy'ler bağlantıyı kesmemesi için)
+  const keepAlive = setInterval(() => {
+    try { res.write(`: ping\n\n`); } catch { clearInterval(keepAlive); }
+  }, 20_000);
+
+  try {
+    // Kaynak ZIP'i oluştur
+    const zipBuffer = await buildSourceJar({
+      title: row.title,
+      mcVersion: row.mcVersion,
+      modLoader: row.modLoader,
+      prompt: row.prompt,
+      resultMarkdown: row.resultMarkdown,
+    });
+
+    // Derle — olayları SSE üzerinden stream et
+    await buildMod(zipBuffer, send);
+  } catch (err) {
+    send({ type: "fail", message: err instanceof Error ? err.message : String(err) });
+  } finally {
+    clearInterval(keepAlive);
+    res.end();
+  }
+});
+
+// ─── Derlenmiş .jar tek seferlik indirme ──────────────────────────────────────
+router.get("/mods/:id/jar/:token", async (req, res): Promise<void> => {
+  const { token } = req.params as { token: string };
+  const jar = consumeJar(token);
+
+  if (!jar) {
+    res.status(404).json({ error: "İndirme süresi dolmuş veya geçersiz token." });
+    return;
+  }
+
+  res.setHeader("Content-Type", "application/java-archive");
+  res.setHeader("Content-Disposition", `attachment; filename="${jar.filename}"`);
+  res.setHeader("Content-Length", jar.buffer.length);
+  res.send(jar.buffer);
 });
 
 router.delete("/mods/:id", async (req, res): Promise<void> => {
