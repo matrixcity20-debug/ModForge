@@ -9,10 +9,12 @@ import {
   GetModRequestResponse,
   CreateModRequestResponse,
   GetModStatsResponse,
+  ChatRequestBody,
 } from "../validators";
 import { generateMod } from "../lib/modGenerator";
 import { buildSourceJar } from "../lib/jarBuilder";
 import { buildMod, consumeJar } from "../lib/cloudBuilder";
+import { streamChatResponse } from "../lib/chatService";
 
 const router: IRouter = Router();
 
@@ -237,6 +239,61 @@ router.get("/mods/:id/jar/:token", async (req, res): Promise<void> => {
   res.setHeader("Content-Disposition", `attachment; filename="${jar.filename}"`);
   res.setHeader("Content-Length", jar.buffer.length);
   res.send(jar.buffer);
+});
+
+// ─── AI Sohbet (streaming) ────────────────────────────────────────────────────
+router.post("/mods/:id/chat", async (req, res): Promise<void> => {
+  const params = GetModRequestParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const body = ChatRequestBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+
+  const [row] = await db
+    .select()
+    .from(modRequestsTable)
+    .where(eq(modRequestsTable.id, params.data.id));
+
+  if (!row) {
+    res.status(404).json({ error: "Mod request not found" });
+    return;
+  }
+
+  // Streaming düz metin — frontend fetch().body.getReader() ile okur
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Transfer-Encoding", "chunked");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  try {
+    await streamChatResponse(
+      body.data.model,
+      {
+        title: row.title,
+        mcVersion: row.mcVersion,
+        modLoader: row.modLoader,
+        prompt: row.prompt,
+        resultMarkdown: row.resultMarkdown,
+      },
+      body.data.messages,
+      (chunk) => {
+        try { res.write(chunk); } catch { /* client bağlantısı kesildi */ }
+      },
+    );
+  } catch (err) {
+    try {
+      res.write(`\n\n[HATA: ${err instanceof Error ? err.message : String(err)}]`);
+    } catch { /* client bağlantısı kesildi */ }
+  } finally {
+    res.end();
+  }
 });
 
 router.delete("/mods/:id", async (req, res): Promise<void> => {

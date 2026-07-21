@@ -12,7 +12,7 @@ import { tr } from 'date-fns/locale';
 import {
   ArrowLeft, Trash2, Clock, Terminal, AlertCircle,
   FileCode2, PackageCheck, Loader2, Cpu, Hammer, Download,
-  CheckCircle2, XCircle, ChevronDown,
+  CheckCircle2, XCircle, ChevronDown, MessageSquare, X,
 } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +29,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { ModChat } from '@/components/mod-chat';
 
 // ─── Build durumu ──────────────────────────────────────────────────────────────
 
@@ -53,6 +54,9 @@ export default function ModDetail() {
 
   // Kaynak ZIP indirme
   const [isDownloading, setIsDownloading] = React.useState(false);
+
+  // Chat paneli
+  const [chatOpen, setChatOpen] = React.useState(false);
 
   // Sunucu derleme
   const [buildDialogOpen, setBuildDialogOpen] = React.useState(false);
@@ -258,11 +262,11 @@ export default function ModDetail() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-[100dvh] bg-background pb-16">
+    <div className="min-h-[100dvh] bg-background flex flex-col">
 
       {/* ── Üst bar ──────────────────────────────────────────────────────── */}
-      <header className="bg-zinc-950 text-white border-b border-zinc-800 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <header className="bg-zinc-950 text-white border-b border-zinc-800 sticky top-0 z-20 shrink-0">
+        <div className="max-w-full px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/" className="text-zinc-400 hover:text-white transition-colors flex items-center">
               <ArrowLeft className="w-5 h-5 mr-2" />
@@ -275,7 +279,7 @@ export default function ModDetail() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {isCompleted && (
               <>
                 {/* Kaynak ZIP indirme */}
@@ -305,6 +309,24 @@ export default function ModDetail() {
                   )}
                   {build.status === 'building' ? 'Derleniyor...' : '.jar\'a Derle'}
                 </Button>
+
+                {/* AI Sohbet butonu */}
+                <Button
+                  variant={chatOpen ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setChatOpen((v) => !v)}
+                  className={cn(
+                    'font-mono text-xs uppercase tracking-wider',
+                    chatOpen
+                      ? ''
+                      : 'border-primary/50 text-primary hover:bg-primary hover:text-white',
+                  )}
+                >
+                  {chatOpen
+                    ? <><X className="w-4 h-4 mr-2" />Sohbeti Kapat</>
+                    : <><MessageSquare className="w-4 h-4 mr-2" />AI ile Geliştir</>
+                  }
+                </Button>
               </>
             )}
 
@@ -322,94 +344,115 @@ export default function ModDetail() {
         </div>
       </header>
 
-      {/* ── Ana içerik ────────────────────────────────────────────────────── */}
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
-        <div className="mb-8">
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            <Badge
-              variant={isPending ? 'secondary' : isFailed ? 'destructive' : 'success'}
-              className="font-mono text-[10px] uppercase tracking-wider"
-            >
-              {isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin inline" />}
-              {mod.status}
-            </Badge>
-            <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-wider">
-              MC {mod.mcVersion}
-            </Badge>
-            <Badge
-              variant={
-                mod.modLoader === 'forge' ? 'forge' :
-                mod.modLoader === 'fabric' ? 'fabric' :
-                mod.modLoader === 'neoforge' ? 'neoforge' : 'quilt'
-              }
-              className="font-mono text-[10px] uppercase tracking-wider"
-            >
-              {mod.modLoader}
-            </Badge>
-            <div className="ml-auto flex items-center text-xs text-zinc-500 font-mono">
-              <Clock className="w-3 h-3 mr-1" />
-              {formatDistanceToNow(new Date(mod.createdAt), { addSuffix: true, locale: tr })}
-            </div>
-          </div>
+      {/* ── Split layout: içerik + chat ───────────────────────────────────── */}
+      <div className={cn('flex flex-1 overflow-hidden', chatOpen ? 'flex-row' : 'flex-col')}>
 
-          <h1 className="text-3xl sm:text-5xl font-bold tracking-tight mb-4">
-            {mod.title || 'İsimsiz Plan'}
-          </h1>
-
-          <Card className="bg-zinc-50 dark:bg-zinc-900/50 border-dashed mb-8">
-            <CardContent className="p-6">
-              <h3 className="font-mono text-xs uppercase tracking-wider text-zinc-500 font-bold mb-2">Orijinal İstem</h3>
-              <p className="text-zinc-700 dark:text-zinc-300 italic">"{mod.prompt}"</p>
-            </CardContent>
-          </Card>
-
-          {mod.summary && !isFailed && (
-            <p className="text-lg text-zinc-600 dark:text-zinc-400 leading-relaxed max-w-3xl">
-              {mod.summary}
-            </p>
+        {/* ── Ana içerik ──────────────────────────────────────────────────── */}
+        <div
+          className={cn(
+            'overflow-y-auto pb-16',
+            chatOpen ? 'flex-1 min-w-0' : 'w-full',
           )}
+        >
+          <main className={cn(
+            'px-4 sm:px-6 lg:px-8 py-8 sm:py-12',
+            chatOpen ? 'max-w-full' : 'max-w-5xl mx-auto',
+          )}>
+            <div className="mb-8">
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                <Badge
+                  variant={isPending ? 'secondary' : isFailed ? 'destructive' : 'success'}
+                  className="font-mono text-[10px] uppercase tracking-wider"
+                >
+                  {isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin inline" />}
+                  {mod.status}
+                </Badge>
+                <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-wider">
+                  MC {mod.mcVersion}
+                </Badge>
+                <Badge
+                  variant={
+                    mod.modLoader === 'forge' ? 'forge' :
+                    mod.modLoader === 'fabric' ? 'fabric' :
+                    mod.modLoader === 'neoforge' ? 'neoforge' : 'quilt'
+                  }
+                  className="font-mono text-[10px] uppercase tracking-wider"
+                >
+                  {mod.modLoader}
+                </Badge>
+                <div className="ml-auto flex items-center text-xs text-zinc-500 font-mono">
+                  <Clock className="w-3 h-3 mr-1" />
+                  {formatDistanceToNow(new Date(mod.createdAt), { addSuffix: true, locale: tr })}
+                </div>
+              </div>
 
-          {isPending && (
-            <div className="bg-zinc-900 text-zinc-100 border border-zinc-800 rounded-xl p-8 font-mono">
-              <div className="flex items-center gap-3 mb-6">
-                <Cpu className="w-6 h-6 text-primary animate-pulse" />
-                <span className="text-primary font-bold text-lg">Yapay Zeka Motoru Çalışıyor</span>
-              </div>
-              <div className="space-y-2 text-sm text-zinc-400 mb-6">
-                <p>▸ Mod mimarisi tasarlanıyor...</p>
-                <p>▸ Java kodu üretiliyor...</p>
-                <p>▸ Dosya yapısı oluşturuluyor...</p>
-              </div>
-              <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
-                <div className="h-full bg-primary rounded-full animate-[progress_2s_ease-in-out_infinite]" style={{ width: '60%' }} />
-              </div>
-              <p className="text-[11px] text-zinc-600 mt-4">Bu sayfa üretim tamamlanınca otomatik güncellenecek.</p>
-            </div>
-          )}
+              <h1 className="text-3xl sm:text-5xl font-bold tracking-tight mb-4">
+                {mod.title || 'İsimsiz Plan'}
+              </h1>
 
-          {isFailed && (
-            <div className="bg-destructive/10 text-destructive border border-destructive/20 rounded-lg p-6 flex items-start gap-4">
-              <AlertCircle className="w-6 h-6 shrink-0 mt-1" />
-              <div>
-                <h3 className="font-bold text-lg mb-1">Plan Üretimi Başarısız</h3>
-                <p className="opacity-90">{mod.summary || 'Atölye bu isteği işlerken bir hatayla karşılaştı.'}</p>
-              </div>
+              <Card className="bg-zinc-50 dark:bg-zinc-900/50 border-dashed mb-8">
+                <CardContent className="p-6">
+                  <h3 className="font-mono text-xs uppercase tracking-wider text-zinc-500 font-bold mb-2">Orijinal İstem</h3>
+                  <p className="text-zinc-700 dark:text-zinc-300 italic">"{mod.prompt}"</p>
+                </CardContent>
+              </Card>
+
+              {mod.summary && !isFailed && (
+                <p className="text-lg text-zinc-600 dark:text-zinc-400 leading-relaxed max-w-3xl">
+                  {mod.summary}
+                </p>
+              )}
+
+              {isPending && (
+                <div className="bg-zinc-900 text-zinc-100 border border-zinc-800 rounded-xl p-8 font-mono">
+                  <div className="flex items-center gap-3 mb-6">
+                    <Cpu className="w-6 h-6 text-primary animate-pulse" />
+                    <span className="text-primary font-bold text-lg">Yapay Zeka Motoru Çalışıyor</span>
+                  </div>
+                  <div className="space-y-2 text-sm text-zinc-400 mb-6">
+                    <p>▸ Mod mimarisi tasarlanıyor...</p>
+                    <p>▸ Java kodu üretiliyor...</p>
+                    <p>▸ Dosya yapısı oluşturuluyor...</p>
+                  </div>
+                  <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+                    <div className="h-full bg-primary rounded-full animate-[progress_2s_ease-in-out_infinite]" style={{ width: '60%' }} />
+                  </div>
+                  <p className="text-[11px] text-zinc-600 mt-4">Bu sayfa üretim tamamlanınca otomatik güncellenecek.</p>
+                </div>
+              )}
+
+              {isFailed && (
+                <div className="bg-destructive/10 text-destructive border border-destructive/20 rounded-lg p-6 flex items-start gap-4">
+                  <AlertCircle className="w-6 h-6 shrink-0 mt-1" />
+                  <div>
+                    <h3 className="font-bold text-lg mb-1">Plan Üretimi Başarısız</h3>
+                    <p className="opacity-90">{mod.summary || 'Atölye bu isteği işlerken bir hatayla karşılaştı.'}</p>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+
+            {mod.resultMarkdown && (
+              <div className="mt-12 space-y-6">
+                <h3 className="flex items-center text-xl font-bold tracking-tight border-b pb-4">
+                  <FileCode2 className="w-5 h-5 mr-3 text-primary" />
+                  Üretilen Mimari
+                </h3>
+                <div className="bg-card rounded-xl border p-6 sm:p-8 shadow-sm overflow-x-auto">
+                  <MarkdownRenderer content={mod.resultMarkdown} />
+                </div>
+              </div>
+            )}
+          </main>
         </div>
 
-        {mod.resultMarkdown && (
-          <div className="mt-12 space-y-6">
-            <h3 className="flex items-center text-xl font-bold tracking-tight border-b pb-4">
-              <FileCode2 className="w-5 h-5 mr-3 text-primary" />
-              Üretilen Mimari
-            </h3>
-            <div className="bg-card rounded-xl border p-6 sm:p-8 shadow-sm overflow-x-auto">
-              <MarkdownRenderer content={mod.resultMarkdown} />
-            </div>
+        {/* ── Chat paneli ──────────────────────────────────────────────────── */}
+        {chatOpen && (
+          <div className="w-full sm:w-[420px] lg:w-[480px] shrink-0 flex flex-col overflow-hidden border-l border-zinc-800">
+            <ModChat modId={id} />
           </div>
         )}
-      </main>
+      </div>
 
       {/* ── Derleme ilerleme dialogu ──────────────────────────────────────── */}
       <Dialog open={buildDialogOpen} onOpenChange={setBuildDialogOpen}>
