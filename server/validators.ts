@@ -70,3 +70,13 @@ export const GetModStatsResponse = zod.object({
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+export const ChatMessageSchema = zod.object({
+  role: zod.enum(["user", "assistant"]),
+  content: zod.string().min(1),
+});
+
+export const ChatRequestBody = zod.object({
+  messages: zod.array(ChatMessageSchema).min(1),
+  model: zod.string().min(1),
+});
